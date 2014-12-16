@@ -25,6 +25,13 @@ fi
 . $_COMMON
 
 # Program variables
+MONIT="sudo /var/vcap/bosh/bin/monit"
+RUNIT="sudo sv"
+DBDUMP="/var/vcap/packages/postgres/bin/pg_dump --clean --create"
+DBDUMPALL="/var/vcap/packages/postgres/bin/pg_dumpall --clean"
+RSYNC="rsync -arzhv --delete"
+TAR="tar -zcvf"
+
 # Functions and procedures
 set +e
 
@@ -64,7 +71,7 @@ pre_start() {
     local wait_time=$PROCESS_TIME_LIMIT
 
     echon_log "Checking bosh processes ... "
-    running=$(exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary" | grep running | wc -l)
+    running=$(exec_host "$user" "$host" "$MONIT summary" | grep running | wc -l)
     rvalue=${PIPESTATUS[0]}
     if [ $rvalue  != 0 ]; then
         echo "failed!"
@@ -73,29 +80,29 @@ pre_start() {
     fi
     echo "ok"
     echon_log "Stopping bosh processes  "
-    exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit stop all" > /dev/null
+    exec_host "$user" "$host" "$MONIT stop all" > /dev/null
     for ((counter=0;counter<wait_time;counter++)); do
         echo -n "."
         sleep 2
-        stopped=$(exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary" | grep stopped | wc -l)
+        stopped=$(exec_host "$user" "$host" "$MONIT summary" | grep stopped | wc -l)
         [ "$running" == "$stopped" ] && echo " done" && break
     done
-    stopped=$(exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary" | grep stopped | wc -l)
+    stopped=$(exec_host "$user" "$host" "$MONIT summary" | grep stopped | wc -l)
     if [ "$running" != "$stopped" ]; then
  	echo " failed"
         error_log "Failed to stop monit processes ... Restarting again:"
-        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit validate"
+        exec_host "$user" "$host" "$MONIT validate"
         return 1
     fi
     echon_log "Stopping bosh agent ... "
-    exec_host "$user" "$host" "sudo sv shutdown agent" > /dev/null
+    exec_host "$user" "$host" "$RUNIT shutdown agent" > /dev/null
     rvalue=$?
     if [ $rvalue != 0 ]; then
         echo "failed!"
         error_log "Failed to stop bosh agent ... Restarting again:"
-        exec_host "$user" "$host" "sudo sv start agent"
+        exec_host "$user" "$host" "$RUNIT start agent"
         error_log "Starting monit:"
-        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit validate"
+        exec_host "$user" "$host" "$MONIT validate"
         return 1
     fi
     echo "ok"
@@ -113,29 +120,29 @@ post_finish() {
     local wait_time=$PROCESS_TIME_LIMIT
 
     echon_log "Starting bosh agent ... "
-    exec_host "$user" "$host" "sudo sv start agent" > /dev/null
+    exec_host "$user" "$host" "$RUNIT start agent" > /dev/null
     rvalue=$?
     if [ $rvalue  != 0 ]; then
         echo "failed!"
     	error_log "Error, bosh agent failed to start!. Trying again!"
-        exec_host "$user" "$host" "sudo sv start agent"
+        exec_host "$user" "$host" "$RUNIT start agent"
         rvalue=1
     else
     	echo "ok"
     fi
     echon_log "Starting bosh processes "
-    exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit start all" > /dev/null
+    exec_host "$user" "$host" "$MONIT start all" > /dev/null
     for ((counter=0;counter<wait_time;counter++)); do
         echo -n "."
         sleep 2
-        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary" > /dev/null
+        exec_host "$user" "$host" "$MONIT summary" > /dev/null
         exitvalue=$?
         [ "$exitvalue" == "0" ] && echo " done" && break
     done
     if [ "$exitvalue" != "0" ]; then
         echo " failed!"
         error_log "Failed to start monit:"
-        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary"
+        exec_host "$user" "$host" "$MONIT summary"
         rvalue=1
     fi
     return $rvalue
@@ -154,46 +161,46 @@ db_dump() {
     local wait_time=$PROCESS_TIME_LIMIT
 
     echon_log "Starting DB backup. Starting processes "
-    exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit start postgres" > /dev/null
+    exec_host "$user" "$host" "$MONIT start postgres" > /dev/null
     for ((counter=0;counter<wait_time;counter++)); do
         echo -n "."
         sleep 2
-        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary | grep postgres | grep -q ' running'"
+        exec_host "$user" "$host" "$MONIT summary | grep postgres | grep -q ' running'"
         exitvalue=$?
         [ "$exitvalue" == "0" ] && echo " done" && break
     done
     if [ "$exitvalue" != "0" ]; then
         echo " failed!"
         error_log "Failed to start postgres:"
-        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary"
+        exec_host "$user" "$host" "$MONIT summary"
         rvalue=1
     fi
     if echo ${dbs} | grep -q "_all_"; then
        echon_log "Dumping all databases ... "
-       exec_host "$user" "$host" "/var/vcap/packages/postgres/bin/pg_dumpall --clean -f ${dst}.all"
+       exec_host "$user" "$host" "$DBDUMPALL -f ${dst}.all"
        echo "done"
     else
        for d in ${dbs}; do
            echon_log "Dumping database ${d} ... "
-           exec_host "$user" "$host" "/var/vcap/packages/postgres/bin/pg_dump --clean --create -f ${dst}.${d}"
+           exec_host "$user" "$host" "$DBDUMP -f ${dst}.${d}"
            echo "done"
        done
     fi
-#    echon_log "Stopping DB processes ... "
-#    exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit stop postgres" > /dev/null
-#    for ((counter=0;counter<wait_time;counter++)); do
-#        echo -n "."
-#        sleep 2
-#        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary | grep postgres | grep -q ' stopped'"
-#        exitvalue=$?
-#        [ "$exitvalue" == "0" ] && echo_log " done!" && break
-#    done
-#    if [ "$exitvalue" != "0" ]; then
-#        echo " failed!"
-#        error_log "Failed to stop postgres:"
-#        exec_host "$user" "$host" "sudo /var/vcap/bosh/bin/monit summary"
-#        rvalue=0
-#    fi
+    echon_log "Stopping DB processes ... "
+    exec_host "$user" "$host" "$MONIT stop postgres" > /dev/null
+    for ((counter=0;counter<wait_time;counter++)); do
+        echo -n "."
+        sleep 2
+        exec_host "$user" "$host" "$MONIT summary | grep postgres | grep -q ' stopped'"
+        exitvalue=$?
+        [ "$exitvalue" == "0" ] && echo_log " done!" && break
+    done
+    if [ "$exitvalue" != "0" ]; then
+        echo " failed!"
+        error_log "Failed to stop postgres:"
+        exec_host "$user" "$host" "$MONIT summary"
+        rvalue=0
+    fi
     return $rvalue
 }
 
@@ -209,8 +216,7 @@ rsync_files() {
     local logfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').rsync.log"
 
     echon_log "Copying files with rsync ... "
-    rsync -arzhv --delete --include-from="${filelist}" --log-file=$logfile \
-          ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG 2>&1
+    $RSYNC --include-from="${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG 2>&1
     rvalue=$?
     cat $logfile >> $PROGRAM_LOG
     if [ $rvalue -eq 0 ]; then
@@ -238,7 +244,7 @@ archive() {
     done
     echo
     echon_log "Creating tgz $output ... "
-    tar -zcvf ${ouput} ${dst} 2>&1 | tee -a $PROGRAM_LOG > $logfile
+    $TAR ${ouput} ${dst} 2>&1 | tee -a $PROGRAM_LOG > $logfile
     rvalue=${PIPESTATUS[0]}
     if [ $rvalue -eq 0 ]; then
         echo "done!"
@@ -268,20 +274,20 @@ backup() {
 
     debug_log "Preparing list of files ..."
     get_list "${filelist}" | tee -a $PROGRAM_LOG > ${tmpfile}
-#    if [ ! -z "${dbs}" ]; then
-#        db_dump ${user} ${host} "${dbdump}" "${dbs}"
-#        rvalue=$?
-#        if [ $rvalue -eq 0 ]; then
-#            debug_log "Adding DB backup to the list of files: "
-#	    echo "+ $(basename ${dbdump})*" | tee -a $PROGRAM_LOG >> "${tmpfile}"
-#        fi
-#    fi
-#    rsync_files ${user} ${host} "${remote}" "${cache}" "${tmpfile}"
-#    rvalue=$?
-#    if [ $rvalue -eq 0 ]; then
+    if [ ! -z "${dbs}" ]; then
+        db_dump ${user} ${host} "${dbdump}" "${dbs}"
+        rvalue=$?
+        if [ $rvalue -eq 0 ]; then
+            debug_log "Adding DB backup to the list of files: "
+	    echo "+ $(basename ${dbdump})*" | tee -a $PROGRAM_LOG >> "${tmpfile}"
+        fi
+    fi
+    rsync_files ${user} ${host} "${remote}" "${cache}" "${tmpfile}"
+    rvalue=$?
+    if [ $rvalue -eq 0 ]; then
         archive "${cache}" "${output}" "${addlist}"
         rvalue=$?
-#    fi
+    fi
     exec_host "$user" "$host" "rm -f ${dbdump}*"
     rm -f "${tmpfile}"
     return $rvalue
@@ -334,9 +340,7 @@ RC=1
 while [ $# -gt 0 ]; do
     case "$1" in
         backup)
-            # pre_start "${USER}" "${HOST}"
-            RC=$?
-            [ $RC == 0 ] && backup "${USER}" "${HOST}" "${DBS}" "${CACHE}" "RSYNC_LIST" "${OUTPUT}" "ADD_LIST"
+            pre_start "${USER}" "${HOST}" && backup "${USER}" "${HOST}" "${DBS}" "${CACHE}" "RSYNC_LIST" "${OUTPUT}" "ADD_LIST"
             RC=$?
             post_finish "${USER}" "${HOST}"
             [ $? != 0 ] && RC=1

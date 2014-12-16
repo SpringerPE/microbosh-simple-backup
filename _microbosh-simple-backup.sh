@@ -16,7 +16,13 @@ NAME=$PROGRAM
 DESC="microBosh simple backup"
 
 # Load the library and load the configuration file if it exists
-_COMMON="$PROGRAM_DIR/_libs/_common.sh"
+REALPATH=$(readlink "$PROGRAM")
+if [ ! -z "$REALPATH" ]; then
+    REALPATH=$(dirname "$REALPATH")
+    _COMMON="$REALPATH/_libs/_common.sh"
+else
+    _COMMON="$PROGRAM_DIR/_libs/_common.sh"
+fi
 if ! [ -f "$_COMMON" ]; then
     msg="$(date "+%Y-%m-%d %T"): Error $_COMMON not found!"
     logger -s -p local0.err -t ${0} "$msg"
@@ -294,6 +300,39 @@ backup() {
 }
 
 
+setup() {
+    local user="$1"
+    local host="$2"
+    local cache="$3"
+    local key="$4"
+
+    local rvalue=1
+
+    echo_log "Creating folders"
+    mkdir -p "${cache}" | tee -a -a $PROGRAM_LOG
+    rvalue=${PIPESTATUS[0]}
+    if [ $rvalue == 0 ]; then
+        echo_log "Copying public key to "${host}" ... "
+	ssh-copy-id -i ${key} "${user}@${host}" 2>&1 | tee -a $PROGRAM_LOG
+        rvalue=${PIPESTATUS[0]}
+        if [ $rvalue == 0 ]; then
+            echo_log "Creating sudoers file ..."
+            ssh "${user}@${host}" "sudo -S -- sh -c \"\
+                    echo 'vcap ALL= NOPASSWD: /usr/bin/sv,/var/vcap/bosh/bin/monit'> /etc/sudoers.d/backup && \
+                    chmod 0440 /etc/sudoers.d/backup\"" 2>&1 | tee -a $PROGRAM_LOG
+            echo_log "Testing connection: "
+            exec_host "${user}" "${host}" "$MONIT summary" | tee -a $PROGRAM_LOG
+            rvalue=${PIPESTATUS[0]}
+        else
+            error_log "failed to copy key"
+        fi
+    else
+        error_log "failed to create cache dir"
+    fi
+    return $rvalue
+}
+
+
 # Main Program
 # Parse the input
 OPTIND=1
@@ -346,14 +385,8 @@ while [ $# -gt 0 ]; do
             [ $? != 0 ] && RC=1
         ;;
         set)
-            echo_log "Creating folders"
-            mkdir -p "${CACHE}"
-            echo_log "Copying public key to "${HOST}" : "
-	    ssh-copy-id -i ${SSH_PUBLIC_KEY} "${USER}@${HOST}" | tee -a $PROGRAM_LOG
-            RC=${PIPESTATUS[0]}
-            echo_log "Testing connection: "
-            exec_host "${USER}" "${HOST}" "sudo /var/vcap/bosh/bin/monit summary" | tee -a $PROGRAM_LOG
-            RC=${PIPESTATUS[0]}
+            setup "${USER}" "${HOST}" "${CACHE}" "${SSH_PUBLIC_KEY}"
+            RC=$?
         ;;
         *)
             usage

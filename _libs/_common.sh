@@ -34,6 +34,8 @@ PROGRAM_CONF=""
 PROGRAM_LIB="$PROGRAM_DIR/_libs"
 
 # Load Springer base lib
+REALPATH=${REALPATH:-$(dirname "$(readlink $PROGRAM)")}
+[ ! -z "$REALPATH" ] && PROGRAM_LIB="$REALPATH/_libs" || PROGRAM_LIB="$PROGRAM_DIR/_libs"
 _BASE_LIB="$PROGRAM_LIB/_lib.sh"
 if ! [ -f "$_BASE_LIB" ]; then
     msg="$(date '+%Y-%m-%d %T'): Error $_BASE_LIB not found!"

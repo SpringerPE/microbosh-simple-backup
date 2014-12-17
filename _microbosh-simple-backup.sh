@@ -32,7 +32,7 @@ fi
 
 # Program variables
 MONIT="sudo /var/vcap/bosh/bin/monit"
-RUNIT="sudo sv"
+RUNIT="sudo /usr/bin/sv"
 DBDUMP="/var/vcap/packages/postgres/bin/pg_dump --clean --create"
 DBDUMPALL="/var/vcap/packages/postgres/bin/pg_dumpall --clean"
 RSYNC="rsync -arzhv --delete"
@@ -101,7 +101,7 @@ pre_start() {
         return 1
     fi
     echon_log "Stopping bosh agent ... "
-    exec_host "$user" "$host" "$RUNIT shutdown agent" > /dev/null
+    exec_host "$user" "$host" "$RUNIT stop agent" > /dev/null
     rvalue=$?
     if [ $rvalue != 0 ]; then
         echo "failed!"
@@ -249,8 +249,10 @@ archive() {
         cp -v "${PROGRAM_DIR}/${f}" "${ouput}/" >>$PROGRAM_LOG 2>&1 || echo "(failed)" && echo " "
     done
     echo
+    debug_log "Copying $PROGRAM_LOG ..."
+    cp -v "$PROGRAM_LOG" "${ouput}/" >>$PROGRAM_LOG 2>&1
     echon_log "Creating tgz $output ... "
-    $TAR ${ouput} ${dst} 2>&1 | tee -a $PROGRAM_LOG > $logfile
+    $TAR ${output} ${dst} 2>&1 | tee -a $PROGRAM_LOG > $logfile
     rvalue=${PIPESTATUS[0]}
     if [ $rvalue -eq 0 ]; then
         echo "done!"
@@ -274,10 +276,12 @@ backup() {
     local addlist="$7"
 
     local rvalue
+    local exitvalue
     local remote="/var/vcap/store/"
     local tmpfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').rsync.list"
     local dbdump="/var/vcap/store/postgres_$(date '+%Y%m%d%H%M%S').dump"
 
+    pre_start ${user} ${host} || return 1
     debug_log "Preparing list of files ..."
     get_list "${filelist}" | tee -a $PROGRAM_LOG > ${tmpfile}
     if [ ! -z "${dbs}" ]; then
@@ -290,12 +294,16 @@ backup() {
     fi
     rsync_files ${user} ${host} "${remote}" "${cache}" "${tmpfile}"
     rvalue=$?
+    post_finish ${user} ${host}
+    exitvalue=$?
+    debug_log "Removing remote dbdump ..."
+    exec_host "$user" "$host" "rm -f ${dbdump}*"
     if [ $rvalue -eq 0 ]; then
         archive "${cache}" "${output}" "${addlist}"
         rvalue=$?
     fi
-    exec_host "$user" "$host" "rm -f ${dbdump}*"
     rm -f "${tmpfile}"
+    [ $exitvalue != 0 ] && return $exitvalue 
     return $rvalue
 }
 
@@ -379,10 +387,8 @@ RC=1
 while [ $# -gt 0 ]; do
     case "$1" in
         backup)
-            pre_start "${USER}" "${HOST}" && backup "${USER}" "${HOST}" "${DBS}" "${CACHE}" "RSYNC_LIST" "${OUTPUT}" "ADD_LIST"
+            backup "${USER}" "${HOST}" "${DBS}" "${CACHE}" "RSYNC_LIST" "${OUTPUT}" "ADD_LIST"
             RC=$?
-            post_finish "${USER}" "${HOST}"
-            [ $? != 0 ] && RC=1
         ;;
         set)
             setup "${USER}" "${HOST}" "${CACHE}" "${SSH_PUBLIC_KEY}"

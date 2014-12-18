@@ -35,8 +35,8 @@ MONIT="sudo /var/vcap/bosh/bin/monit"
 RUNIT="sudo /usr/bin/sv"
 DBDUMP="/var/vcap/packages/postgres/bin/pg_dump --clean --create"
 DBDUMPALL="/var/vcap/packages/postgres/bin/pg_dumpall --clean"
-RSYNC="rsync -arzhv --delete"
-TAR="tar -zcvf"
+RSYNC="rsync -arzhv -x -AX --delete"
+TAR="tar -acv --acls --atime-preserve"
 
 # Functions and procedures
 set +e
@@ -222,13 +222,14 @@ rsync_files() {
     local logfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').rsync.log"
 
     echon_log "Copying files with rsync ... "
-    $RSYNC --include-from="${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG 2>&1
+    $RSYNC --include-from="${filelist}" --log-file=$logfile ${user}@${host}:"${remote}/" "${dst}/" >>$PROGRAM_LOG 2>&1
     rvalue=$?
     cat $logfile >> $PROGRAM_LOG
-    if [ $rvalue -eq 0 ]; then
+    if [ $rvalue == 0 ]; then
         echo "done!"
     else
         echo "error!"
+        echo "rsync has reported some errors"
         cat $logfile
     fi
     rm -f $logfile
@@ -246,21 +247,19 @@ archive() {
     echon_log "Adding extra files: "
     for f in ${added}; do
         echo -n "${f}"
-        cp -v "${PROGRAM_DIR}/${f}" "${ouput}/" >>$PROGRAM_LOG 2>&1 || echo "(failed)" && echo " "
+        cp -v "${f}" "${dst}/" >>$PROGRAM_LOG 2>&1 || echo -n "(failed) " && echo -n " "
     done
     echo
-    debug_log "Copying $PROGRAM_LOG ..."
-    cp -v "$PROGRAM_LOG" "${ouput}/" >>$PROGRAM_LOG 2>&1
     echon_log "Creating tgz $output ... "
-    $TAR ${output} ${dst} 2>&1 | tee -a $PROGRAM_LOG > $logfile
+    $TAR -f ${output} ${dst} 2>&1 | tee -a $PROGRAM_LOG > "${logfile}"
     rvalue=${PIPESTATUS[0]}
     if [ $rvalue -eq 0 ]; then
         echo "done!"
     else
         echo "error!"
-        cat $logfile
+        cat "${logfile}"
     fi
-    rm -f $logfile
+    rm -f "${logfile}"
     return $rvalue
 }
 
@@ -276,17 +275,18 @@ backup() {
 
     local rvalue
     local exitvalue
-    local remote="/var/vcap/store/"
+    local remote="/var/vcap/"
     local tmpfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').rsync.list"
     local dbdump="/var/vcap/store/postgres_$(date '+%Y%m%d%H%M%S').dump"
 
+    echo $(date '+%Y%m%d%H%M%S') > "${cache}/_date.control"
     pre_start ${user} ${host} || return 1
     debug_log "Preparing list of files ..."
     get_list "${filelist}" | tee -a $PROGRAM_LOG > ${tmpfile}
     if [ ! -z "${dbs}" ]; then
         db_dump ${user} ${host} "${dbdump}" "${dbs}"
         rvalue=$?
-        if [ $rvalue -eq 0 ]; then
+        if [ $rvalue == 0 ]; then
             debug_log "Adding DB backup to the list of files: "
 	    echo "+ $(basename ${dbdump})*" | tee -a $PROGRAM_LOG >> "${tmpfile}"
         fi
@@ -295,12 +295,16 @@ backup() {
     rvalue=$?
     post_finish ${user} ${host}
     exitvalue=$?
+    echo $(date '+%Y%m%d%H%M%S') >> "${cache}/_date.control"
     debug_log "Removing remote dbdump ..."
     exec_host "$user" "$host" "rm -f ${dbdump}*"
-    if [ $rvalue -eq 0 ]; then
-        archive "${cache}" "${output}" "${addlist}"
+    if [ $rvalue == 0 ] && [ ! -z "${output}" ]; then
+        archive "${cache}" "${output}" "$(get_list ${addlist})"
         rvalue=$?
     fi
+    debug_log "Copying $PROGRAM_LOG ... "
+    rm -f "${cache}/"*.log
+    cp -v "$PROGRAM_LOG" "${cache}/" >>$PROGRAM_LOG 2>&1
     rm -f "${tmpfile}"
     [ $exitvalue != 0 ] && return $exitvalue 
     return $rvalue

@@ -3,11 +3,21 @@ microbosh-simple-backup
 
 Simple backup script for a microbosh instance
 
-About this microbosh-simple-backup
-==================================
+About microbosh-simple-backup
+=============================
 
 Warning! This information is about how to perform a manual recover 
 of a bosh server, not about howto clone a bosh server.
+
+Assumptions
+ * bosh-deployments.yml is saved and up-to-date
+ * micro_bosh.yml is saved and up-to-date.
+
+In theory the blobstore is not needed in theory, as it is going to be 
+populated from the release you used to deploy, but it makes it much easier 
+if that data is lost, the director still thinks it is available, and you 
+have to recover from that by reconstructing the blobstore and updating 
+the blob ids in the bosh database.
 
 How the backups are done
 ========================

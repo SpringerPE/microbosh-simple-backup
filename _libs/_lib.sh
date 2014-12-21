@@ -25,7 +25,7 @@ SSH_OPTIONS=${SSH_OPTIONS:-'ConnectTimeout=30 BatchMode=yes'}
 ##############################
 # Print a message
 echo_log() {
-   $LOGGER -p local0.notice -t ${PROGRAM} "$@"
+   $LOGGER -p local0.notice -t ${PROGRAM} -- "$@"
    echo "--$PROGRAM $(date '+%Y-%m-%d %T'): $@" | tee -a $PROGRAM_LOG
 }
 
@@ -33,7 +33,7 @@ echo_log() {
 ##############################
 # Print a message without \n at the end
 echon_log() {
-   $LOGGER -p local0.notice -t ${PROGRAM} "$@"
+   $LOGGER -p local0.notice -t ${PROGRAM} -- "$@"
    echo -n "--$PROGRAM $(date '+%Y-%m-%d %T'): $@" | tee -a $PROGRAM_LOG
 }
 
@@ -41,7 +41,7 @@ echon_log() {
 ##############################
 # error
 error_log() {
-    $LOGGER -p local0.err -t ${PROGRAM} "$@"
+    $LOGGER -p local0.err -t ${PROGRAM} -- "$@"
     echo "--$PROGRAM $(date '+%Y-%m-%d %T') ERROR: $@" | tee -a $PROGRAM_LOG
 }
 
@@ -49,7 +49,7 @@ error_log() {
 ##############################
 # DEBUG
 debug_log() {
-   $LOGGER -p local0.debug -t ${PROGRAM} "$@"
+   $LOGGER -p local0.debug -t ${PROGRAM} -- "$@"
     if [ z"$DEBUG" == z"0" ]; then
         echo "--$PROGRAM $(date '+%Y-%m-%d %T'): $@" >> $PROGRAM_LOG
     else

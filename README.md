@@ -32,8 +32,8 @@ the same name (only changing the sufix `.sh` into `.conf`) and using different
 variables, is possible to backup different microBOSH instances.
 
 After defining the configuration file and creating a link to the program,
-you have to run the program with the argument `setup. By doing this, the program 
-will copy the $SSH_PUBLIC_KEY and create the file `/etc/sudoers.d/backup` to allow        
+you have to run the program with the argument `setup`. By doing this, the program 
+will copy the _$SSH_PUBLIC_KEY_ and create the file `/etc/sudoers.d/backup` to allow        
 the execution of some commands with sudo.
 
 ```

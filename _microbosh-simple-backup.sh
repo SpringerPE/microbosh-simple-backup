@@ -331,6 +331,8 @@ backup() {
     local dbdir="${cache}/dbs/"
     local rsyncache="${cache}/vcap/"
 
+    echo_log "Starting backup in ${cache}."
+    mkdir -p "${cache}"
     echo $(date '+%Y%m%d%H%M%S') > "${cache}/_date.control"
     pre_start ${user} ${host} || return 1
     debug_log "Preparing list of files ..."

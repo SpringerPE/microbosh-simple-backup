@@ -7,14 +7,17 @@
 # First we need to setup the Global variables, only if their default values
 # are wrong for this script
 DEBUG=0
-EXEC_USER=$USER                # normally must be an user or $USER to avoid 
+EXEC_USER=$USER                # normally must be an user or $USER to avoid
                                # changuing the user automaticaly with sudo.
+PROCESS_TIME_LIMIT=600
+SSH='ssh -n'
+SSH_OPTIONS='ConnectTimeout=30 BatchMode=yes'
+
 # Other variables
 PROGRAM=${PROGRAM:-$(basename $0)}
 PROGRAM_DIR=$(cd $(dirname "$0"); pwd)
 NAME=$PROGRAM
 DESC="microBosh simple backup"
-PROCESS_TIME_LIMIT=600
 
 # Load the library and load the configuration file if it exists
 REALPATH=$(readlink "$PROGRAM")
@@ -66,7 +69,6 @@ EOF
 }
 
 
-# Prestart 
 pre_start() {
     local user="$1"
     local host="$2"
@@ -155,18 +157,18 @@ post_finish() {
     for ((counter=0;counter<wait_time;counter++)); do
         echo -n "."
         sleep 2
-        exec_host "$user" "$host" "$MONIT summary" 2>&1 | head -n 1 | grep -q "uptime" >>$PROGRAM_LOG
+        exec_host "$user" "$host" "$MONIT summary" 2>&1 | head -n 1 | grep -q "uptime" >/dev/null
         rvalue=$?
         if [ $rvalue == 0 ]; then
             echo " done"
             debug_log "starting all monit processes"
-            exec_host "$user" "$host" "$MONIT start all" >>$PROGRAM_LOG 2>&1
+            exec_host "$user" "$host" "$MONIT start all" > /dev/null 2>> $PROGRAM_LOG
             break
         fi
     done
     sleep 10
     debug_log "Summary of monit processes"
-    exec_host "$user" "$host" "$MONIT summary" >>$PROGRAM_LOG 2>&1
+    exec_host "$user" "$host" "$MONIT summary" > /dev/null 2>> $PROGRAM_LOG
     rvalue=$?
     return $rvalue
 }
@@ -255,9 +257,12 @@ rsync_files() {
 
     local rvalue=0
     local logfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').rsync.log"
+    local sshoptions=""
 
     echon_log "Copying files with rsync ... "
-    $RSYNC --rsync-path="sudo rsync" --filter="merge ${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG 2>&1
+    [ ! -z "${SSH_PRIVATE_KEY}" ] && sshoptions="-i ${SSH_PRIVATE_KEY}"
+    echo $RSYNC -e "ssh -l ${user} ${sshoptions}" --rsync-path="sudo rsync" --filter="merge ${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG
+    $RSYNC -e "ssh -l ${user} ${sshoptions}" --rsync-path="sudo rsync" --filter="merge ${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG 2>&1
     rvalue=$?
     cat $logfile >> $PROGRAM_LOG
     if [ $rvalue == 0 ]; then
@@ -282,10 +287,12 @@ archive() {
     echon_log "Adding extra files: "
     for f in ${added}; do
         echo -n "${f}"
+        echo cp -v "${f}" "${dst}/" >>$PROGRAM_LOG
         cp -v "${f}" "${dst}/" >>$PROGRAM_LOG 2>&1 || echo -n "(failed) " && echo -n " "
     done
     echo
     echon_log "Creating tgz $output ... "
+    echo $TAR -f ${output} -C ${dst} * >>$PROGRAM_LOG
     cd ${dst} && $TAR -f ${output} -C ${dst} * 2>&1 | tee -a $PROGRAM_LOG > "${logfile}"
     rvalue=${PIPESTATUS[0]}
     if [ $rvalue == 0 ]; then
@@ -343,7 +350,7 @@ backup() {
     echo $(date '+%Y%m%d%H%M%S') >> "${cache}/_date.control"
     debug_log "Removing remote dbdump ..."
     exec_host "$user" "$host" "sudo rm -f ${dbdump}*" >> $PROGRAM_LOG
-    if [ $rvalue == 0 ]; then 
+    if [ $rvalue == 0 ]; then
         debug_log "Moving dbdump to final location ${dbdir} ..."
         rm -rf "${dbdir}" && mkdir -p "${dbdir}" 2>&1 | tee -a $PROGRAM_LOG
         mv "${rsyncache}/store/$(basename ${dbdump})"* "${dbdir}/" 2>&1 | tee -a $PROGRAM_LOG
@@ -357,11 +364,12 @@ backup() {
             fi
         fi
     fi
-    debug_log "Copying $PROGRAM_LOG ... "
+    echon_log "Cleaning temp files and copying logs ... "
     rm -f "${cache}/"*.log
     cp -v "$PROGRAM_LOG" "${cache}/" >>$PROGRAM_LOG 2>&1
     rm -f "${tmpfile}"
-    [ $exitvalue != 0 ] && return $exitvalue 
+    echo "end"
+    [ $exitvalue != 0 ] && return $exitvalue
     return $rvalue
 }
 
@@ -441,6 +449,7 @@ while getopts "hdc:-:" optchar; do
 done
 shift $((OPTIND-1)) # Shift off the options and optional --.
 # Parse the rest of the options
+[ ! -z "${SSH_PRIVATE_KEY}" ] && SSH="$SSH -i ${SSH_PRIVATE_KEY}"
 RC=1
 while [ $# -gt 0 ]; do
     case "$1" in

@@ -313,6 +313,44 @@ exec_host() {
     return $rvalue
 }
 
+
+#################################
+# exec a process
+launch() {
+    local logfile="/tmp/${PROGRAM%%.sh}_$$_$(date '+%Y%m%d%H%M%S').out"
+    local rvalue
+
+    echo >> $PROGRAM_LOG
+    debug_log "Launching: '$@'"
+    # Exec process
+    echo "* -- START -- PID=$$" >> $logfile
+    (
+        echo "* Process environment was:" >> $logfile
+        env >> $logfile
+        echo >> $logfile
+        echo "* Command line of pid $$ was:" >> $logfile
+        echo "$@" >> $logfile
+        echo "* -- $(date) --" >> $logfile
+        {
+            exec time $@  2>&1;
+        } >> $logfile
+    ) &
+    pid=$!
+    wait $pid 2>/dev/null
+    rvalue=$?
+    echo "* -- END -- RC=$rvalue" >> $logfile
+    if [ "$rvalue" != "0" ]; then
+        echo_log "Error launching process: $@"
+        echo_log "Dumping log file:"
+        cat $logfile | tee -a $PROGRAM_LOG
+    else
+        cat $logfile >> $PROGRAM_LOG
+    fi
+    rm -f $logfile
+    return $rvalue
+}
+
+
 #################################
 # Dumps the last 20 lines of a log file. For information.
 dump_log() {

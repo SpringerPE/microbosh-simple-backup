@@ -115,7 +115,6 @@ pre_start() {
 }
 
 
-
 bosh_agent() {
     local user="$1"
     local host="$2"
@@ -255,22 +254,38 @@ rsync_files() {
     local dst="$4"
     local filelist="$5"
 
-    local rvalue=0
-    local logfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').rsync.log"
+    local logfile="/tmp/${PROGRAM%%.sh}_$$_$(date '+%Y%m%d%H%M%S').out"
     local sshoptions=""
+    local rvalue
+
+    [ ! -z "${SSH_PRIVATE_KEY}" ] && sshoptions="-i ${SSH_PRIVATE_KEY}"
 
     echon_log "Copying files with rsync ... "
-    [ ! -z "${SSH_PRIVATE_KEY}" ] && sshoptions="-i ${SSH_PRIVATE_KEY}"
-    echo $RSYNC -e "ssh -l ${user} ${sshoptions}" --rsync-path="sudo rsync" --filter="merge ${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG
-    $RSYNC -e "ssh -l ${user} ${sshoptions}" --rsync-path="sudo rsync" --filter="merge ${filelist}" --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >>$PROGRAM_LOG 2>&1
+    echo >> $PROGRAM_LOG
+    # Exec process
+    echo "* -- START -- PID=$$" >> $logfile
+    (
+        echo "* Process environment was:" >> $logfile
+        env >> $logfile
+        echo >> $logfile
+        echo "* Command line of pid $$ was:" >> $logfile
+        echo $RSYNC --rsh="ssh -l ${user} ${sshoptions}" --rsync-path="sudo rsync" --include-from=${filelist} --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" >> $logfile
+        echo "* -- $(date) --" >> $logfile
+        {
+            exec time $RSYNC --rsh="ssh -l ${user} ${sshoptions}" --rsync-path="sudo rsync" --include-from=${filelist} --log-file=$logfile ${user}@${host}:"${remote}" "${dst}/" 2>&1;
+        } >> $logfile
+    ) &
+    pid=$!
+    wait $pid 2>/dev/null
     rvalue=$?
-    cat $logfile >> $PROGRAM_LOG
-    if [ $rvalue == 0 ]; then
-        echo "done!"
-    else
+    echo "* -- END -- RC=$rvalue" >> $logfile
+    if [ $rvalue != 0 ]; then
         echo "error!"
-        error_log "rsync has reported some errors"
-        cat $logfile
+        echo_log "launching rsync. Dumping log file:"
+        cat $logfile | tee -a $PROGRAM_LOG
+    else
+        echo "done!"
+        cat $logfile >> $PROGRAM_LOG
     fi
     rm -f $logfile
     return $rvalue
@@ -282,8 +297,6 @@ archive() {
     local output="$2"
     local added="$3"
 
-    local logfile="/tmp/${PROGRAM}_$$_$(date '+%Y%m%d%H%M%S').tar.log"
-
     echon_log "Adding extra files: "
     for f in ${added}; do
         echo -n "${f}"
@@ -291,17 +304,12 @@ archive() {
         cp -v "${f}" "${dst}/" >>$PROGRAM_LOG 2>&1 || echo -n "(failed) " && echo -n " "
     done
     echo
-    echon_log "Creating tgz $output ... "
-    echo $TAR -f ${output} -C ${dst} * >>$PROGRAM_LOG
-    cd ${dst} && $TAR -f ${output} -C ${dst} * 2>&1 | tee -a $PROGRAM_LOG > "${logfile}"
-    rvalue=${PIPESTATUS[0]}
-    if [ $rvalue == 0 ]; then
-        echo "done!"
-    else
-        echo "error!"
-        cat "${logfile}"
-    fi
-    rm -f "${logfile}"
+    echon_log "Creating $output ... "
+    (
+        cd ${dst} && launch $TAR -f ${output} -C ${dst} *
+    )
+    rvalue=$?
+    [ $rvalue == 0 ] && echo "done!"
     return $rvalue
 }
 
@@ -354,7 +362,7 @@ backup() {
         debug_log "Moving dbdump to final location ${dbdir} ..."
         rm -rf "${dbdir}" && mkdir -p "${dbdir}" 2>&1 | tee -a $PROGRAM_LOG
         mv "${rsyncache}/store/$(basename ${dbdump})"* "${dbdir}/" 2>&1 | tee -a $PROGRAM_LOG
-        rvalue=$?
+        rvalue=${PIPESTATUS[0]}
         if [ $rvalue != 0 ]; then
             error_log "moving local dabatase dumps"
         else
@@ -392,8 +400,8 @@ setup() {
         if [ $rvalue == 0 ]; then
             echo_log "Creating sudoers file ..."
             ssh "${user}@${host}" "sudo -S -- sh -c \"\
-                    echo 'vcap ALL= NOPASSWD: /bin/touch,/bin/chmod,/bin/chown,/bin/rm,/bin/cp,/usr/bin/rsync,/usr/bin/sv,/var/vcap/bosh/bin/monit'> /etc/sudoers.d/backup && \
-                    chmod 0440 /etc/sudoers.d/backup\"" 2>&1 | tee -a $PROGRAM_LOG
+                echo 'vcap ALL= NOPASSWD: /bin/touch,/bin/chmod,/bin/chown,/bin/rm,/bin/cp,/usr/bin/rsync,/usr/bin/sv,/var/vcap/bosh/bin/monit'> /etc/sudoers.d/backup && \
+                chmod 0440 /etc/sudoers.d/backup\"" 2>&1 | tee -a $PROGRAM_LOG
             echo_log "Testing connection: "
             exec_host "${user}" "${host}" "$MONIT summary" | tee -a $PROGRAM_LOG
             rvalue=${PIPESTATUS[0]}

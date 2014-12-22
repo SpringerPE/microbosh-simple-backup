@@ -151,7 +151,7 @@ Otherwise, in case of problems, there is a db dump with all the information.
   * `# rsync -arzhv BACKUP.tgz $USER@$HOST:/var/vcap/store/`
   and go to bosh server ...
 6. On the bosh server, start all bosh processes
-  * `# sudo /var/vcap/bosh/bin/monit stop all`
+  * `# sudo /var/vcap/bosh/bin/monit start all`
 7. On the bosh server, check that everything is started
   * `# sudo /var/vcap/bosh/bin/monit summary`
 8. On the bosh server, start bosh agent

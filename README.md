@@ -158,7 +158,7 @@ Otherwise, in case of problems, there is a db dump with all the information.
 8. On the bosh server, check that everything is started
   * `# sudo /var/vcap/bosh/bin/monit summary`
   * You will see that the system is not monitored `System 'system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225' not monitored`. You have to start it manually: `$ sudo /var/vcap/bosh/bin/monit start system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225`
-9. 'bosh cloudcheck' (executed from bosh-workspace) will show that the uuid of the system has changed. Thus it has to be changed in the manifest as well. `bosh status` shows the new uuid. Replace the old uuid in `{test,dev,live}/manifests/RELEASE.yml`
+9. `bosh cloudcheck` (executed from bosh-workspace) will show that the uuid of the system has changed. Thus it has to be changed in the manifest as well. `bosh status` shows the new uuid. Replace the old uuid in `{test,dev,live}/manifests/RELEASE.yml`
 10. Change the admin password: `bosh create user admin very-long-and-secure-passphrase`
 
 By doing those operations, you should be able to recover everything,

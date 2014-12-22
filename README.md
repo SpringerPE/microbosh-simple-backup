@@ -146,7 +146,8 @@ Otherwise, in case of problems, there is a db dump with all the information.
 5. From your local server, rsync all the data cached from the latest backup,
   otherwise, you can copy a tgz file and uncompress it manually on the bosh
   server:
-  * `# rsync -arzhv --delete $CACHE/ $USER@$HOST:/var/vcap/store/`
+  * `# rsync -arzhv --delete $CACHE/vcap/store/postgres $USER@$HOST:/var/vcap/store/postgres/`
+  * `# rsync -arzhv --delete $CACHE/vcap/store/blobstore/ $USER@$HOST:/var/vcap/store/blobstore`
   or by coping a tgz file:
   * `# rsync -arzhv BACKUP.tgz $USER@$HOST:/var/vcap/store/`
   and go to bosh server ...
@@ -156,6 +157,9 @@ Otherwise, in case of problems, there is a db dump with all the information.
   * `# sudo /usr/bin/sv start agent`
 8. On the bosh server, check that everything is started
   * `# sudo /var/vcap/bosh/bin/monit summary`
+  * You will see that the system is not monitored `System 'system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225' not monitored`. You have to start it manually: `$ sudo /var/vcap/bosh/bin/monit start system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225`
+9. 'bosh cloudcheck' (executed from bosh-workspace) will show that the uuid of the system has changed. Thus it has to be changed in the manifest as well. `bosh status` shows the new uuid. Replace the old uuid in `{test,dev,live}/manifests/RELEASE.yml`
+10. Change the admin password: `bosh create user admin very-long-and-secure-passphrase`
 
 By doing those operations, you should be able to recover everything,
 if that does not work, then you will need more hacks.

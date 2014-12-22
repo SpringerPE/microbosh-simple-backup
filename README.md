@@ -152,10 +152,10 @@ Otherwise, in case of problems, there is a db dump with all the information.
   and go to bosh server ...
 6. On the bosh server, start all bosh processes
   * `# sudo /var/vcap/bosh/bin/monit start all`
-7. On the bosh server, check that everything is started
-  * `# sudo /var/vcap/bosh/bin/monit summary`
-8. On the bosh server, start bosh agent
+7. On the bosh server, start bosh agent
   * `# sudo /usr/bin/sv start agent`
+8. On the bosh server, check that everything is started
+  * `# sudo /var/vcap/bosh/bin/monit summary`
 
 By doing those operations, you should be able to recover everything,
 if that does not work, then you will need more hacks.

@@ -157,7 +157,7 @@ Otherwise, in case of problems, there is a db dump with all the information.
   * `# sudo /var/vcap/bosh/bin/monit start all`
 8. On the bosh server, check that everything is started
   * `# sudo /var/vcap/bosh/bin/monit summary`
-  * In an 2619 stemcell you will see that the system is not monitored: `System 'system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225' not monitored`. You have to start it manually: `$ sudo /var/vcap/bosh/bin/monit start system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225`. As of stemcell 2719 this willbe fixed.
+  * In an 2619 stemcell you will see that the system is not monitored: `System 'system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225' not monitored`. You have to start it manually: `$ sudo /var/vcap/bosh/bin/monit start system_bm-e0bcbfab-fd07-4fe7-b110-675e27a85225`. As of stemcell 2719 this will be fixed.
 8. `bosh cloudcheck` (executed from bosh-workspace) will show that the uuid of the system has changed. Thus it has to be changed in the manifest as well. `bosh status` shows the new uuid. Replace the old uuid in `{test,dev,live}/manifests/RELEASE.yml`
 9. Change the admin password: `bosh create user admin very-long-and-secure-passphrase`
 

@@ -126,7 +126,7 @@ which are defined in the configuration file:
   * `# sudo /usr/bin/sv start agent`
 9. On the bosh server, remove database dumps (if exists)
   * `# rm -f /var/vcap/store/postgres_*`
-10. On your local server, create a tgz file from the cache
+10. Optional, on your local server, create a tgz file from the cache
   * `# tar -zcvf $OUTPUT $CACHE`
 
 Recovering bosh
@@ -186,3 +186,8 @@ work with both databases.
 # /var/vcap/packages/postgres/bin/psql
 ```
 
+License and Authors
+===================
+
+License:: GPLv3
+Author:: Jose Riguera Lopez, Springer SBM (jose.riguera@springer.com)

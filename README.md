@@ -190,4 +190,5 @@ License and Authors
 ===================
 
 License:: GPLv3
+
 Author:: Jose Riguera Lopez, Springer SBM (jose.riguera@springer.com)

@@ -33,24 +33,24 @@ variables, is possible to backup different microBOSH instances.
 
 After defining the configuration file and creating a link to the program,
 you have to run the program with the argument `setup`. By doing this, the program 
-will copy the _$SSH_PUBLIC_KEY_ and create the file `/etc/sudoers.d/backup` to allow        
+will copy the _$SSH_PUBLIC_KEY_ and create the file `/etc/sudoers.d/backup` to allow 
 the execution of some commands with sudo.
 
 ```
 # ./microbosh-simple-backup-test.sh setup
 --microbosh-simple-backup-test.sh 2014-12-21 01:19:52: Creating folders ...
---microbosh-simple-backup-test.sh 2014-12-21 01:19:52: Copying public key to 10.230.0.22 ... 
+--microbosh-simple-backup-test.sh 2014-12-21 01:19:52: Copying public key to 10.10.10.10 ... 
 /usr/bin/ssh-copy-id: INFO: attempting to log in with the new key(s), to filter out any that are already installed
 /usr/bin/ssh-copy-id: INFO: 1 key(s) remain to be installed -- if you are prompted now it is to install the new keys
-vcap@10.230.0.22's password: 
+vcap@10.10.10.10's password: 
 
 Number of key(s) added: 1
 
-Now try logging into the machine, with:   "ssh 'vcap@10.230.0.22'"
+Now try logging into the machine, with:   "ssh 'vcap@10.10.10.10'"
 and check to make sure that only the key(s) you wanted were added.
 
 --microbosh-simple-backup-test.sh 2014-12-21 01:19:59: Creating sudoers file ...
-vcap@10.230.0.22's password: 
+vcap@10.10.10.10's password: 
 [sudo] password for vcap: c1oudc0w
 --microbosh-simple-backup-test.sh 2014-12-21 01:20:16: Testing connection: 
 The Monit daemon 5.2.4 uptime: 29m 

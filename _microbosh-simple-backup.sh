@@ -384,6 +384,17 @@ backup() {
 }
 
 
+abort_cleanup() {
+    local user="$1"
+    local host="$2"
+
+    echo_log "Signal received. Recovering remote bosh ..."
+    bosh_agent "${user}" "${host}" "start"
+    post_finish "${user}" "${host}"
+    return $?
+}
+
+
 setup() {
     local user="$1"
     local host="$2"
@@ -461,6 +472,8 @@ shift $((OPTIND-1)) # Shift off the options and optional --.
 # Parse the rest of the options
 [ ! -z "${SSH_PRIVATE_KEY}" ] && SSH="$SSH -i ${SSH_PRIVATE_KEY}"
 RC=1
+# trap abort_cleanup SIGHUP SIGINT SIGBUS SIGTERM
+trap_add "abort_cleanup ${USER} ${HOST}" SIGHUP SIGINT SIGBUS SIGTERM
 while [ $# -gt 0 ]; do
     case "$1" in
         backup)
@@ -469,6 +482,10 @@ while [ $# -gt 0 ]; do
         ;;
         setup)
             setup "${USER}" "${HOST}" "${CACHE}" "${SSH_PUBLIC_KEY}"
+            RC=$?
+        ;;
+        checkup)
+            abort_cleanup "${USER}" "${HOST}"
             RC=$?
         ;;
         *)

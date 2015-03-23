@@ -156,7 +156,7 @@ post_finish() {
     for ((counter=0;counter<wait_time;counter++)); do
         echo -n "."
         sleep 2
-        exec_host "$user" "$host" "$MONIT summary" 2>&1 | head -n 1 | grep -q "uptime" >/dev/null
+        exec_host "$user" "$host" "$MONIT summary" | head -n 1 | grep -q "uptime" >/dev/null
         rvalue=$?
         if [ $rvalue == 0 ]; then
             echo " done"

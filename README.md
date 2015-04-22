@@ -99,7 +99,8 @@ How the backups are done
 ========================
 
 The script just performs those steps (in order) using the variables
-which are defined in the configuration file:
+which are defined in the configuration file. Those are the steps for --offline 
+mode, which means that all processes are stopped to create a consistent backup.
 
 1. Logon in the microBosh VM with the parameters from the configuration file:
   * `# ssh $USER@$HOST`

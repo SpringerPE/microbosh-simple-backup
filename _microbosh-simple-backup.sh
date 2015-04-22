@@ -50,7 +50,7 @@ usage() {
     cat <<EOF
 Usage:
 
-    $PROGRAM  [-h | --help ] [-d | --debug] [-c | --config <configuration-file>] <action>
+    $PROGRAM  [-h | --help ] [-d | --debug] [--online | --offline] [-c | --config <configuration-file>] <action>
 
 $DESC
 
@@ -59,6 +59,8 @@ Arguments:
    -h, --help         Show this message
    -d, --debug        Debug mode
    -c, --config       Configuration file
+   --online           It will not stop monit processes
+   --offline          Stops monit processes (default)
 
 Action:
 
@@ -72,6 +74,7 @@ EOF
 pre_start() {
     local user="$1"
     local host="$2"
+    local mode="$3"
 
     local notrunning
     local running=0
@@ -96,6 +99,7 @@ pre_start() {
     running=$(exec_host "$user" "$host" "$MONIT summary" | awk 'NR > 2 && $3=="running" { print $2 }' | wc -w)
     [ "${running}" == 0 ] && return 1
     echo "ok (${running} running)"
+    [ "${mode}" == "online" ] && return 0
     echon_log "Stopping bosh processes  "
     exec_host "$user" "$host" "$MONIT stop all" > /dev/null
     for ((counter=0;counter<wait_time;counter++)); do
@@ -119,9 +123,11 @@ bosh_agent() {
     local user="$1"
     local host="$2"
     local action="$3"
+    local mode="$4"
 
     local rvalue=0
 
+    [ "${mode}" == "online" ] && return 0
     if [ "${action}" == "stop" ]; then
         echon_log "Stopping bosh agent ... "
         exec_host "$user" "$host" "$RUNIT stop agent" > /dev/null
@@ -147,25 +153,28 @@ bosh_agent() {
 post_finish() {
     local user="$1"
     local host="$2"
+    local mode="$3"
 
     local rvalue=1
     local counter
     local wait_time=$PROCESS_TIME_LIMIT
 
-    echon_log "Starting monit processes "
-    for ((counter=0;counter<wait_time;counter++)); do
-        echo -n "."
-        sleep 2
-        exec_host "$user" "$host" "$MONIT summary" | head -n 1 | grep -q "uptime" >/dev/null
-        rvalue=$?
-        if [ $rvalue == 0 ]; then
-            echo " done"
-            debug_log "starting all monit processes"
-            exec_host "$user" "$host" "$MONIT start all" > /dev/null 2>> $PROGRAM_LOG
-            break
-        fi
-    done
-    sleep 10
+    if [ "${mode}" == "offline" ]; then
+        echon_log "Starting monit processes "
+        for ((counter=0;counter<wait_time;counter++)); do
+            echo -n "."
+            sleep 2
+            exec_host "$user" "$host" "$MONIT summary" | head -n 1 | grep -q "uptime" >/dev/null
+            rvalue=$?
+            if [ $rvalue == 0 ]; then
+                echo " done"
+                debug_log "starting all monit processes"
+                exec_host "$user" "$host" "$MONIT start all" > /dev/null 2>> $PROGRAM_LOG
+                break
+            fi
+        done
+        sleep 10
+    fi
     debug_log "Summary of monit processes"
     exec_host "$user" "$host" "$MONIT summary" > /dev/null 2>> $PROGRAM_LOG
     rvalue=$?
@@ -178,6 +187,7 @@ db_dump() {
     local host="$2"
     local dst="$3"
     local dbs="$4"
+    local mode="$5"
 
     local rvalue=0
     local exitvalue=1
@@ -185,20 +195,22 @@ db_dump() {
     local running=1
     local wait_time=$PROCESS_TIME_LIMIT
 
-    echon_log "Starting DB backup. Starting processes "
-    exec_host "$user" "$host" "$MONIT start postgres" > /dev/null
-    for ((counter=0;counter<wait_time;counter++)); do
-        echo -n "."
-        sleep 2
-        exec_host "$user" "$host" "$MONIT summary" | grep postgres | grep -q ' running'
-        exitvalue=$?
-        [ "$exitvalue" == "0" ] && echo " done" && break
-    done
-    if [ "$exitvalue" != "0" ]; then
-        echo " failed!"
-        error_log "Failed to start postgres:"
-        exec_host "$user" "$host" "$MONIT summary"
-        rvalue=$exitvalue
+    if [ "${mode}" == "offline" ]; then
+        echon_log "Starting DB backup. Starting processes "
+        exec_host "$user" "$host" "$MONIT start postgres" > /dev/null
+        for ((counter=0;counter<wait_time;counter++)); do
+            echo -n "."
+            sleep 2
+            exec_host "$user" "$host" "$MONIT summary" | grep postgres | grep -q ' running'
+            exitvalue=$?
+            [ "$exitvalue" == "0" ] && echo " done" && break
+        done
+        if [ "$exitvalue" != "0" ]; then
+            echo " failed!"
+            error_log "Failed to start postgres:"
+            exec_host "$user" "$host" "$MONIT summary"
+            rvalue=$exitvalue
+        fi
     fi
     if echo ${dbs} | grep -q "_all_"; then
        echon_log "Dumping all databases ... "
@@ -228,21 +240,23 @@ db_dump() {
            fi
        done
     fi
-    echon_log "Stopping DB processes "
-    exec_host "$user" "$host" "$MONIT stop all" > /dev/null
-    for ((counter=0;counter<wait_time;counter++)); do
-        echo -n "."
-        sleep 2
-        running=$(exec_host "$user" "$host" "$MONIT summary" | awk 'NR > 2 && $3=="running" { print $2 }' | wc -w)
-        [ "$running" == "0" ] && echo " done!" && break
-    done
-    if [ "$running" != "0" ]; then
-        echo " failed!"
-        error_log "Failed to stop postgres processes:"
-        exec_host "$user" "$host" "$MONIT summary"
-        rvalue=$exitvalue
+    if [ "${mode}" == "offline" ]; then
+        echon_log "Stopping DB processes "
+        exec_host "$user" "$host" "$MONIT stop all" > /dev/null
+        for ((counter=0;counter<wait_time;counter++)); do
+            echo -n "."
+            sleep 2
+            running=$(exec_host "$user" "$host" "$MONIT summary" | awk 'NR > 2 && $3=="running" { print $2 }' | wc -w)
+            [ "$running" == "0" ] && echo " done!" && break
+        done
+        if [ "$running" != "0" ]; then
+            echo " failed!"
+            error_log "Failed to stop postgres processes:"
+            exec_host "$user" "$host" "$MONIT summary"
+            rvalue=$exitvalue
+        fi
+        sleep 5
     fi
-    sleep 5
     return $rvalue
 }
 
@@ -318,10 +332,11 @@ backup() {
     local user="$1"
     local host="$2"
     local dbs="$3"
-    local cache="$4"
-    local filelist="$5"
-    local output="$6"
-    local addlist="$7"
+    local mode="$4"
+    local cache="$5"
+    local filelist="$6"
+    local output="$7"
+    local addlist="$8"
 
     local rvalue=0
     local exitvalue
@@ -334,11 +349,11 @@ backup() {
     echo_log "Starting backup in ${cache}."
     mkdir -p "${cache}"
     echo $(date '+%Y%m%d%H%M%S') > "${cache}/_date.control"
-    pre_start ${user} ${host} || return 1
+    pre_start ${user} ${host} ${mode} || return 1
     debug_log "Preparing list of files ..."
     get_list "${filelist}" | tee -a $PROGRAM_LOG > ${tmpfile}
     if [ ! -z "${dbs}" ]; then
-        db_dump ${user} ${host} "${dbdump}" "${dbs}"
+        db_dump ${user} ${host} "${dbdump}" "${dbs}" ${mode}
         rvalue=$?
         if [ $rvalue == 0 ]; then
             debug_log "Adding DB backup to the list of files: "
@@ -346,7 +361,7 @@ backup() {
         fi
     fi
     if [ $rvalue == 0 ]; then
-        bosh_agent "$user" "$host" "stop"
+        bosh_agent "$user" "$host" "stop" ${mode}
         rvalue=$?
         if [ $rvalue == 0 ]; then
             mkdir -p "${rsyncache}"
@@ -354,8 +369,8 @@ backup() {
             rvalue=$?
         fi
     fi
-    bosh_agent "$user" "$host" "start"
-    post_finish ${user} ${host}
+    bosh_agent "$user" "$host" "start" ${mode}
+    post_finish ${user} ${host} ${mode}
     exitvalue=$?
     echo $(date '+%Y%m%d%H%M%S') >> "${cache}/_date.control"
     debug_log "Removing remote dbdump ..."
@@ -387,10 +402,11 @@ backup() {
 abort_cleanup() {
     local user="$1"
     local host="$2"
+    local mode="$3"
 
     echo_log "Signal received. Recovering remote bosh ..."
-    bosh_agent "${user}" "${host}" "start"
-    post_finish "${user}" "${host}"
+    bosh_agent "${user}" "${host}" "start" ${mode}
+    post_finish "${user}" "${host}" ${mode}
     return $?
 }
 
@@ -431,6 +447,7 @@ setup() {
 # Main Program
 # Parse the input
 OPTIND=1
+MODE="offline"
 while getopts "hdc:-:" optchar; do
     case "${optchar}" in
         -)
@@ -442,6 +459,12 @@ while getopts "hdc:-:" optchar; do
                 ;;
                 debug)
                     DEBUG=1
+                ;;
+                online)
+                    MODE="online"
+                ;;
+                offline)
+                    MODE="offline"
                 ;;
                 config)
                   eval PROGRAM_CONF="\$${OPTIND}"
@@ -473,11 +496,11 @@ shift $((OPTIND-1)) # Shift off the options and optional --.
 [ ! -z "${SSH_PRIVATE_KEY}" ] && SSH="$SSH -i ${SSH_PRIVATE_KEY}"
 RC=1
 # trap abort_cleanup SIGHUP SIGINT SIGBUS SIGTERM
-trap_add "abort_cleanup ${USER} ${HOST}" SIGHUP SIGINT SIGBUS SIGTERM
+trap_add "abort_cleanup ${USER} ${HOST} ${MODE}" SIGHUP SIGINT SIGBUS SIGTERM
 while [ $# -gt 0 ]; do
     case "$1" in
         backup)
-            backup "${USER}" "${HOST}" "${DBS}" "${CACHE}" "RSYNC_LIST" "${OUTPUT}" "ADD_LIST"
+            backup "${USER}" "${HOST}" "${DBS}" "${MODE}" "${CACHE}" "RSYNC_LIST" "${OUTPUT}" "ADD_LIST"
             RC=$?
         ;;
         setup)
@@ -485,7 +508,7 @@ while [ $# -gt 0 ]; do
             RC=$?
         ;;
         checkup)
-            abort_cleanup "${USER}" "${HOST}"
+            abort_cleanup "${USER}" "${HOST}" "${MODE}"
             RC=$?
         ;;
         *)

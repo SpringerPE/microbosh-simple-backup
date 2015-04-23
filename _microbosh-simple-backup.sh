@@ -91,7 +91,7 @@ pre_start() {
     	error_log "Error, monit summary failed. Fix it!"
         return $rvalue
     fi
-    if [ ! -z ${notrunning} ]; then
+    if [ ! -z "${notrunning}" ]; then
         echo "failed!"
         error_log "some monit processes are not running!: ${notrunning}"
         return 1

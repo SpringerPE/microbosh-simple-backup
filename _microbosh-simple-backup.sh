@@ -19,6 +19,9 @@ PROGRAM_DIR=$(cd $(dirname "$0"); pwd)
 NAME=$PROGRAM
 DESC="microBosh simple backup"
 
+# Defaults
+MODE="offline"
+
 # Load the library and load the configuration file if it exists
 REALPATH=$(readlink "$PROGRAM")
 if [ ! -z "$REALPATH" ]; then
@@ -447,7 +450,6 @@ setup() {
 # Main Program
 # Parse the input
 OPTIND=1
-MODE="offline"
 while getopts "hdc:-:" optchar; do
     case "${optchar}" in
         -)

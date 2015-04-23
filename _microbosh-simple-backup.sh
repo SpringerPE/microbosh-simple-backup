@@ -10,7 +10,7 @@ DEBUG=0
 EXEC_USER=$USER                # normally must be an user or $USER to avoid
                                # changuing the user automaticaly with sudo.
 PROCESS_TIME_LIMIT=600
-SSH='ssh -n'
+SSH='ssh -q -n'
 SSH_OPTIONS='ConnectTimeout=30 BatchMode=yes'
 
 # Other variables
